@@ -67,10 +67,135 @@ async function main() {
   //   2 ** maxDepthSizePair.maxDepth
   // );
 
-  await logNftDetails(
+  // await logNftDetails(
+  //   new PublicKey("9XryH5c1cWBBSdtUBFcUDikswfbLv9p52K6xA1WoBFGt"),
+  //   8
+  // );
+
+  const recieverWallet = await getOrCreateKeypair("Wallet_2");
+  const assetId = await getLeafAssetId(
     new PublicKey("9XryH5c1cWBBSdtUBFcUDikswfbLv9p52K6xA1WoBFGt"),
-    8
+    new BN(0)
   );
+  await airdropSolIfNeeded(recieverWallet.publicKey);
+
+  console.log(
+    `Transfering ${assetId.toString()} from ${wallet.publicKey.toString()} to ${recieverWallet.publicKey.toString()}`
+  );
+
+  await transferCNFT(connection, assetId, wallet, recieverWallet.publicKey);
+}
+
+async function transferCNFT(
+  connection: Connection,
+  assetId: PublicKey,
+  sender: Keypair,
+  receiver: PublicKey
+) {
+  try {
+    const assetDataResponse = await fetch(
+      "https://rpc-devnet.helius.xyz/?api-key=987330c2-6ef1-497e-b562-b5e5bdcaf9df",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "my-id",
+          method: "getAsset",
+          params: {
+            id: assetId,
+          },
+        }),
+      }
+    );
+    const assetData = (await assetDataResponse.json()).result;
+
+    console.log(assetData);
+
+    const assetProofResponse = await fetch(
+      "https://rpc-devnet.helius.xyz/?api-key=987330c2-6ef1-497e-b562-b5e5bdcaf9df",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "my-id",
+          method: "getAssetProof",
+          params: {
+            id: assetId.toString(),
+          },
+        }),
+      }
+    );
+
+    console.log(assetId);
+
+    const assetProof = (await assetProofResponse.json()).result;
+
+    const tree = new PublicKey(assetData.compression.tree);
+
+    const treeAccount = await ConcurrentMerkleTreeAccount.fromAccountAddress(
+      connection,
+      tree
+    );
+
+    const canopyDepth = treeAccount.getCanopyDepth() || 0;
+
+    const proofPath: AccountMeta[] = assetProof.proof
+      .map((node: string) => ({
+        pubkey: new PublicKey(node),
+        isSigner: false,
+        isWritable: false,
+      }))
+      .slice(0, assetProof.proof.length - canopyDepth);
+
+    const treeAuthority = PublicKey.findProgramAddressSync(
+      [tree.toBuffer()],
+      BUBBLEGUM_PROGRAM_ID
+    )[0];
+
+    const transferIx = createTransferInstruction(
+      {
+        merkleTree: tree,
+        treeAuthority: treeAuthority,
+        leafOwner: sender.publicKey,
+        leafDelegate: sender.publicKey,
+        newLeafOwner: receiver,
+        logWrapper: SPL_NOOP_PROGRAM_ID,
+        compressionProgram: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+        anchorRemainingAccounts: proofPath,
+      },
+      {
+        root: [...new PublicKey(assetProof.root.trim()).toBytes()],
+        dataHash: [
+          ...new PublicKey(assetData.compression.data_hash.trim()).toBytes(),
+        ],
+        creatorHash: [
+          ...new PublicKey(assetData.compression.creator_hash.trim()).toBytes(),
+        ],
+        nonce: assetData.compression.leaf_id,
+        index: assetData.compression.leaf_id,
+      }
+    );
+
+    const tx = new Transaction().add(transferIx);
+    tx.feePayer = sender.publicKey;
+    const txSignature = await sendAndConfirmTransaction(
+      connection,
+      tx,
+      [sender],
+      {
+        commitment: "confirmed",
+        skipPreflight: true,
+      }
+    );
+    console.log(`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`);
+  } catch (err: any) {
+    console.error("\nFailed to transfer nft:", err);
+    throw err;
+  }
 }
 
 async function logNftDetails(treeAddress: PublicKey, nftsMinted: number) {
