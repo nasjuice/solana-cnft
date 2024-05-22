@@ -93,44 +93,36 @@ async function transferCNFT(
   receiver: PublicKey
 ) {
   try {
-    const assetDataResponse = await fetch(
-      "https://rpc-devnet.helius.xyz/?api-key=987330c2-6ef1-497e-b562-b5e5bdcaf9df",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "my-id",
-          method: "getAsset",
-          params: {
-            id: assetId,
-          },
-        }),
-      }
-    );
+    const assetDataResponse = await fetch(process.env.RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "my-id",
+        method: "getAsset",
+        params: {
+          id: assetId,
+        },
+      }),
+    });
     const assetData = (await assetDataResponse.json()).result;
 
-    console.log(assetData);
-
-    const assetProofResponse = await fetch(
-      "https://rpc-devnet.helius.xyz/?api-key=987330c2-6ef1-497e-b562-b5e5bdcaf9df",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+    const assetProofResponse = await fetch(process.env.RPC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "my-id",
+        method: "getAssetProof",
+        params: {
+          id: assetId,
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "my-id",
-          method: "getAssetProof",
-          params: {
-            id: assetId.toString(),
-          },
-        }),
-      }
-    );
+      }),
+    });
 
-    console.log(assetId);
+    console.log(assetProofResponse);
 
     const assetProof = (await assetProofResponse.json()).result;
 
